@@ -9,7 +9,7 @@ def i_guess():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using {device}")
 
-    checkpoint = torch.load("best_model.pth",map_location=device)
+    checkpoint = torch.load("best_model_noavg.pth",map_location=device)
 
     model = MNISTClassifier(
         n_layers=checkpoint["n_layers"],

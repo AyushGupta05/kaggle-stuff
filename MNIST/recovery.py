@@ -1,26 +1,31 @@
 import torch
 import torch.nn as nn
-import os
+import numpy as np
+import random
+import copy
 
 from pipeline import train_loader, val_loader
 from train import MNISTClassifier
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-if os.path.exists("best_model.pth"):
-    checkpoint = torch.load("best_model.pth",map_location=device)
-    best_accuracy = checkpoint["accuracy"]
-    print(f"Existing best accuracy: {best_accuracy:.2f}%")
-else:
-    best_accuracy = 0
+seed = 42
+top_models = []
 
 for run in range(20):
     print(f"\nRun {run + 1}/20")
 
+    run_seed = seed + run
+    random.seed(run_seed)
+    np.random.seed(run_seed)
+    torch.manual_seed(run_seed)
+    torch.cuda.manual_seed(run_seed)
+    torch.cuda.manual_seed_all(run_seed)
+
     model = MNISTClassifier(
         n_layers=4,
         n_filters=[64,128,256,256],
-        kernel_size=3,
+        kernel_size=5,
         dropout_rate=0.2,
         fc_size=256,
         use_batchnorm=True
@@ -32,9 +37,17 @@ for run in range(20):
         weight_decay=1e-4
     )
 
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer,
+        T_max=10
+    )
+
     loss_function = nn.CrossEntropyLoss()
 
-    for epoch in range(10):
+    run_best_accuracy = 0
+    run_best_checkpoint = None
+
+    for epoch in range(20):
         model.train()
 
         for image,target in train_loader:
@@ -69,22 +82,52 @@ for run in range(20):
 
         print(f"Run {run + 1} | Epoch {epoch + 1}/10 | Validation accuracy: {accuracy:.2f}%")
 
-        if accuracy > best_accuracy:
-            best_accuracy = accuracy
+        if accuracy > run_best_accuracy:
+            run_best_accuracy = accuracy
 
-            torch.save({
-                "model_state_dict": model.state_dict(),
+            run_best_checkpoint = {
+                "model_state_dict": copy.deepcopy(model.state_dict()),
                 "n_layers": 4,
                 "n_filters": [64,128,256,256],
-                "kernel_size": 3,
+                "kernel_size": 5,
                 "dropout_rate": 0.2,
                 "fc_size": 256,
                 "use_batchnorm": True,
                 "accuracy": accuracy,
                 "epoch": epoch + 1,
-                "run": run + 1
-            },"best_model.pth")
+                "run": run + 1,
+                "seed": run_seed
+            }
 
-            print(f"Saved new best model: {accuracy:.2f}%")
+        scheduler.step()
 
-print(f"\nHighest accuracy: {best_accuracy:.2f}%")
+    top_models.append(run_best_checkpoint)
+
+    top_models = sorted(
+        top_models,
+        key=lambda x: x["accuracy"],
+        reverse=True
+    )[:3]
+
+    for i,checkpoint in enumerate(top_models):
+        torch.save(
+            checkpoint,
+            f"best_model_noavg{i + 1}.pth"
+        )
+
+    print(f"Best accuracy for run {run + 1}: {run_best_accuracy:.2f}%")
+    print("Current top models:")
+
+    for i,checkpoint in enumerate(top_models):
+        print(f"{i + 1}: {checkpoint['accuracy']:.2f}%")
+
+print("\nFinal top 3 models:")
+
+for i,checkpoint in enumerate(top_models):
+    print(
+        f"best_model_noavg{i + 1}.pth | "
+        f"Accuracy: {checkpoint['accuracy']:.2f}% | "
+        f"Run: {checkpoint['run']} | "
+        f"Epoch: {checkpoint['epoch']} | "
+        f"Seed: {checkpoint['seed']}"
+    )
