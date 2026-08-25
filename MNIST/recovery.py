@@ -12,10 +12,29 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 seed = 42
 top_models = []
 
+for i in range(1,4):
+    checkpoint = torch.load(f"best_model_noavg{i}.pth",map_location="cpu")
+    top_models.append(checkpoint)
+
+top_models = sorted(
+    top_models,
+    key=lambda x: x["accuracy"],
+    reverse=True
+)[:3]
+
+print("Starting top 3 models:")
+
+for i,checkpoint in enumerate(top_models):
+    print(
+        f"{i + 1}: {checkpoint['accuracy']:.2f}% | "
+        f"Run: {checkpoint['run']} | "
+        f"Seed: {checkpoint['seed']}"
+    )
+
 for run in range(20):
     print(f"\nRun {run + 1}/20")
 
-    run_seed = seed + run
+    run_seed = seed + 20 + run
     random.seed(run_seed)
     np.random.seed(run_seed)
     torch.manual_seed(run_seed)
@@ -39,7 +58,7 @@ for run in range(20):
 
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer,
-        T_max=10
+        T_max=20
     )
 
     loss_function = nn.CrossEntropyLoss()
@@ -80,7 +99,7 @@ for run in range(20):
 
         accuracy = correct/total * 100
 
-        print(f"Run {run + 1} | Epoch {epoch + 1}/10 | Validation accuracy: {accuracy:.2f}%")
+        print(f"Run {run + 1} | Epoch {epoch + 1}/20 | Validation accuracy: {accuracy:.2f}%")
 
         if accuracy > run_best_accuracy:
             run_best_accuracy = accuracy
@@ -95,7 +114,7 @@ for run in range(20):
                 "use_batchnorm": True,
                 "accuracy": accuracy,
                 "epoch": epoch + 1,
-                "run": run + 1,
+                "run": 21 + run,
                 "seed": run_seed
             }
 
@@ -112,7 +131,7 @@ for run in range(20):
     for i,checkpoint in enumerate(top_models):
         torch.save(
             checkpoint,
-            f"best_model_noavg{i + 1}.pth"
+            f"best_model_extended{i + 1}.pth"
         )
 
     print(f"Best accuracy for run {run + 1}: {run_best_accuracy:.2f}%")
@@ -125,9 +144,11 @@ print("\nFinal top 3 models:")
 
 for i,checkpoint in enumerate(top_models):
     print(
-        f"best_model_noavg{i + 1}.pth | "
+        f"best_model_extended{i + 1}.pth | "
         f"Accuracy: {checkpoint['accuracy']:.2f}% | "
         f"Run: {checkpoint['run']} | "
         f"Epoch: {checkpoint['epoch']} | "
         f"Seed: {checkpoint['seed']}"
     )
+
+    
